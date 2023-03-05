@@ -3,6 +3,11 @@ from dotenv import load_dotenv
 import os
 from typing import Union
 import logging
+import secrets
+import string
+
+#---LOCAL IMPORTS---#
+from models import UserKeyStore, KeyStore
 
 #---LOAD ENV VARS---#
 load_dotenv()
@@ -29,3 +34,8 @@ def create_user_key(username:str, symmetric_key:str, password_hash:str)->None:
     except Exception as error_message:
         logging.exception(error_message)
         return None
+    
+def generate_api_access_key():
+    alphabet = string.ascii_letters + string.digits
+    api_key = ''.join(secrets.choice(alphabet) for i in range(32))
+    return api_key
