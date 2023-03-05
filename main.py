@@ -4,9 +4,11 @@ from starlette.status import HTTP_403_FORBIDDEN, HTTP_400_BAD_REQUEST
 import requests
 import os
 from dotenv import load_dotenv
+from passlib.context import CryptContext
+import bcrypt
 
 #---LOCAL IMPORTS---#
-from db import create_user_key, generate_api_access_key
+from db import create_user_key, generate_api_access_key, get_user_key
 from models import UserKeyStore, KeyStore
 
 #---LOAD ENV VARS---#
@@ -18,6 +20,11 @@ app = FastAPI()
 #---APP SECURITY INIT---#
 API_KEY = os.getenv("SYM_KEY_API_KEY")
 
+pwd_context = CryptContext(schemes =["bcrypt"], deprecated="auto")
+
+def verify_password(plain_text_pw:str, hash_pw:str)->bool:
+    """Returns True if password hash matches the plain text password. Returns False otherwise."""
+    return pwd_context.verify(plain_text_pw, hash_pw)
 
 async def api_key_checker( api_key: str = Header(None)):
     API_KEY = os.getenv("SYM_KEY_API_KEY")
@@ -63,12 +70,22 @@ async def create_user_key_store(user_key_set : UserKeyStore, api_key: str = Depe
     symmetric_key = user_key_set.key_store.symmetric_key
     user_password_hash = user_key_set.key_store.user_password_hash
     
-    return {"message" : f"UserKeyStore object received successfully! {username} {symmetric_key} {user_password}"}
-
-@app.get("/api/v1/user_key")
-async def get_user_key_store(api_key: str = Depends(api_key_checker)):
-    """Function will take a username, password and friend username. After verification it will return an encrypted
-    symmetric key."""
-    pass
+    if  create_user_key(username, symmetric_key, user_password_hash):
+        return {"message" : f"UserKeyStore object stored successfully!"}
+    else: 
+        return{"message" : "There was a problem with storing the data!"}
     
-    return {"message" : "Encrypted symmetric key will be returned here"}
+@app.get("/api/v1/user_key")
+async def get_user_key_store(username : str, password:str, friend_username:str, api_key: str = Depends(api_key_checker)):
+    """Function will take the requesters username and password to verify if the user is actually requesting the operation. After verification it will return an encrypted
+    the friends symmetric key."""
+    user_key_store = get_user_key(username)
+    
+    if verify_password(password, user_key_store["hashed_pw"]):
+        friend_key_store = get_user_key(friend_username)
+        return {"Friend Symmetric Key" : f"{friend_key_store['symmetric_key']}"}
+    
+    else:
+        raise HTTPException(
+            status_code=HTTP_403_FORBIDDEN,
+            detail="Username/Password error! Operation only allowed if the actual user is requesting the operation.",)

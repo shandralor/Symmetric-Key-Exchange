@@ -39,3 +39,9 @@ def generate_api_access_key():
     alphabet = string.ascii_letters + string.digits
     api_key = ''.join(secrets.choice(alphabet) for i in range(32))
     return api_key
+
+def get_user_key(username):
+    user_key_store = KEYS.get(username)
+    return user_key_store["key_store"]
+
+
