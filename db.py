@@ -23,8 +23,8 @@ def create_user_key(username:str, symmetric_key:str, password_hash:str)->None:
     attempts to put this dictionary in the database"""
 
     new_user_key_object = {
-        username: 
-            {
+        user_name: username,
+        key_store: {
                 "symmetric_key" : symmetric_key,
                 "hashed_pw" : password_hash
                 }
