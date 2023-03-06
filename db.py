@@ -1,10 +1,14 @@
 from deta import Deta
 from dotenv import load_dotenv
 import os
+import base64
 from typing import Union
 import logging
 import secrets
 import string
+from cryptography.hazmat.primitives import serialization, hashes
+from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 #---LOCAL IMPORTS---#
 from models import UserKeyStore, KeyStore
@@ -18,15 +22,34 @@ deta = Deta(DETA_KEY)
 #---#
 KEYS = deta.Base("keys_db")
 
-def create_user_key(username:str, symmetric_key:str, password_hash:str)->None:
+def get_user_key(username):
+    user_key_store = KEYS.get(username)
+    return user_key_store
+
+
+def wrap_sym_key(public_key:str, symmetric_key:str):
+    public_key_bytes = serialization.load_pem_public_key(public_key.encode("utf-8"))
+            # Encrypt the symmetric key with the client's public key
+    encrypted_sym_key = public_key_bytes.encrypt(symmetric_key.encode("utf-8"),padding.OAEP(
+        mgf=padding.MGF1(algorithm=hashes.SHA256()),
+        algorithm=hashes.SHA256(),
+        label=None
+        ))
+    encrypted_sym_key_base64 = base64.b64encode(encrypted_sym_key).decode()
+    
+    return encrypted_sym_key_base64 
+                            
+    
+def create_user_key(username:str, password_hash:str, symmetric_key:str, public_key:str)->None:
     """Function to create a new user. It takes three strings and inputs these into the new_user dictionary. The function then
     attempts to put this dictionary in the database"""
 
     new_user_key_object = {
         "key": username,
+        "hashed_pw" : password_hash,
         "key_store": {
                 "symmetric_key" : symmetric_key,
-                "hashed_pw" : password_hash
+                "public_key" : public_key
                 }
             }
     try:
@@ -39,9 +62,4 @@ def generate_api_access_key():
     alphabet = string.ascii_letters + string.digits
     api_key = ''.join(secrets.choice(alphabet) for i in range(32))
     return api_key
-
-def get_user_key(username):
-    user_key_store = KEYS.get(username)
-    return user_key_store["key_store"]
-
 

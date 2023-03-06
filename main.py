@@ -8,8 +8,8 @@ from passlib.context import CryptContext
 import bcrypt
 
 #---LOCAL IMPORTS---#
-from db import create_user_key, generate_api_access_key, get_user_key
-from models import UserKeyStore, KeyStore
+from db import create_user_key, generate_api_access_key, get_user_key, wrap_sym_key
+from models import UserKeyStore, KeyStore, SymKeyRequest
 
 #---LOAD ENV VARS---#
 load_dotenv()
@@ -39,7 +39,6 @@ async def api_key_checker( api_key: str = Header(None)):
             detail="Invalid API key",
         )
 
-
 #---API KEY GEN ROUTE---#
 
 #route the will allow a one-time api key create request and set it in the .env. Afterwards it will refuse to create any new keys
@@ -67,25 +66,42 @@ async def root_route(api_key: str = Depends(api_key_checker)):
 async def create_user_key_store(user_key_set : UserKeyStore, api_key: str = Depends(api_key_checker)):
     
     username = user_key_set.username
+    user_password_hash = user_key_set.user_password_hash
     symmetric_key = user_key_set.key_store.symmetric_key
-    user_password_hash = user_key_set.key_store.user_password_hash
+    public_key = user_key_set.key_store.public_key
     
-    if  create_user_key(username, symmetric_key, user_password_hash):
+    
+    if  create_user_key(username, user_password_hash, symmetric_key, public_key):
         return {"message" : f"UserKeyStore object stored successfully!"}
     else: 
         return{"message" : "There was a problem with storing the data!"}
     
 @app.get("/api/v1/user_key")
-async def get_user_key_store(username : str, password:str, friend_username:str, api_key: str = Depends(api_key_checker)):
+async def get_user_key_store(sym_key_req : SymKeyRequest, api_key: str = Depends(api_key_checker)):
     """Function will take the requesters username and password to verify if the user is actually requesting the operation. After verification it will return an encrypted
     the friends symmetric key."""
+    
+    username = sym_key_req.username
+    password = sym_key_req.password
+    friend_username = sym_key_req.friend_username
+    
     user_key_store = get_user_key(username)
     
     if verify_password(password, user_key_store["hashed_pw"]):
         friend_key_store = get_user_key(friend_username)
-        return {"Friend Symmetric Key" : f"{friend_key_store['symmetric_key']}"}
+        print()
+        print(user_key_store["key_store"]["public_key"])
+        print()
+        print(friend_key_store["key_store"]["symmetric_key"])
+        
+        encrypted_sym_key = wrap_sym_key(str(user_key_store["key_store"]["public_key"]), str(friend_key_store["key_store"]["symmetric_key"]))
+        
+        return {"Friend Symmetric Key" : f"{encrypted_sym_key}"}
     
     else:
         raise HTTPException(
             status_code=HTTP_403_FORBIDDEN,
             detail="Username/Password error! Operation only allowed if the actual user is requesting the operation.",)
+        
+
+print("test")
