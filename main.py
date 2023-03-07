@@ -8,7 +8,7 @@ from passlib.context import CryptContext
 import bcrypt
 
 #---LOCAL IMPORTS---#
-from db import create_user_key, generate_api_access_key, get_user_key, wrap_sym_key
+from db import create_user_key, generate_api_access_key, get_user_key, wrap_sym_key, get_user_friend, add_friend_encrypted_key
 from models import UserKeyStore, KeyStore, SymKeyRequest
 
 #---LOAD ENV VARS---#
@@ -76,7 +76,7 @@ async def create_user_key_store(user_key_set : UserKeyStore, api_key: str = Depe
     else: 
         return{"message" : "There was a problem with storing the data!"}
     
-@app.get("/api/v1/user_key")
+@app.post("/api/v1/user_keys")
 async def get_user_key_store(sym_key_req : SymKeyRequest, api_key: str = Depends(api_key_checker)):
     """Function will take the requesters username and password to verify if the user is actually requesting the operation. After verification it will return an encrypted
     the friends symmetric key."""
@@ -88,16 +88,16 @@ async def get_user_key_store(sym_key_req : SymKeyRequest, api_key: str = Depends
     user_key_store = get_user_key(username)
     
     if verify_password(password, user_key_store["hashed_pw"]):
-        friend_key_store = get_user_key(friend_username)
-        print()
-        print(user_key_store["key_store"]["public_key"])
-        print()
-        print(friend_key_store["key_store"]["symmetric_key"])
-        
-        encrypted_sym_key = wrap_sym_key(str(user_key_store["key_store"]["public_key"]), str(friend_key_store["key_store"]["symmetric_key"]))
-        
-        return {"Friend Symmetric Key" : f"{encrypted_sym_key}"}
-    
+        if not get_user_friend(username, friend_username):
+            
+            friend_key_store = get_user_key(friend_username)       
+            
+            encrypted_sym_key = wrap_sym_key(str(user_key_store["key_store"]["public_key"]), str(friend_key_store["key_store"]["symmetric_key"]))
+            
+            add_friend_encrypted_key(username, friend_username, encrypted_sym_key)
+            return {"Friend Symmetric Key" : f"{encrypted_sym_key}"}
+        else:
+            return {"Friend Symmetric Key" : f"{get_user_friend(username, friend_username)}"}
     else:
         raise HTTPException(
             status_code=HTTP_403_FORBIDDEN,
